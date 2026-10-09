@@ -20,19 +20,24 @@
 **环境要求**
 - Windows 10/11 x64
 - .NET 10 SDK
-- Rust 工具链（`x86_64-pc-windows-msvc`）
 - 可用音频驱动（WDM/MME/KS）
-- Git 子模块已初始化
+
+桥接 DLL（`deepfilter_runtime_bridge.dll`，内嵌默认模型，约 24 MB）已预编译并随仓库放在 `prebuilt\`，日常构建不需要 Rust 工具链，也不需要初始化 Git 子模块。
 
 **构建与运行**
 ```bash
-git submodule update --init --recursive
 dotnet restore
 dotnet build
 dotnet run --project DeepFilterNetGui/DeepFilterNetGui.csproj
 ```
 
-`dotnet build` / `dotnet publish` 会自动先执行 `cargo build`，然后把 `deepfilter_runtime_bridge.dll` 复制到输出目录。
+`dotnet build` / `dotnet publish` 会直接把 `prebuilt\deepfilter_runtime_bridge.dll` 复制到输出目录，跳过 `cargo build`。
+
+**重新编译桥接（仅改动 Rust 时才需要）**
+
+1. 安装 Rust 工具链（`x86_64-pc-windows-msvc`）并执行 `git submodule update --init --recursive`。
+2. 删除或改名 `prebuilt\` 目录，构建会自动回退到 `cargo build`，产物取自 `rust\deepfilter_runtime_bridge\target\...`。
+3. 编译完成后把新的 `deepfilter_runtime_bridge.dll` 放回 `prebuilt\`，恢复快速构建。
 
 **依赖包**
 

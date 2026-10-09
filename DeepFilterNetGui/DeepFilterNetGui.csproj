@@ -30,6 +30,15 @@
     <NativeBridgeOutputPath>$(MSBuildProjectDirectory)\..\rust\deepfilter_runtime_bridge\target\$(RustTargetTriple)\$(CargoProfile)\$(NativeBridgeName).dll</NativeBridgeOutputPath>
   </PropertyGroup>
 
+  <!-- 预编译桥接优先：存在 prebuilt\deepfilter_runtime_bridge.dll 时跳过 cargo，加速构建 -->
+  <PropertyGroup>
+    <PrebuiltBridgePath>$(MSBuildProjectDirectory)\..\prebuilt\$(NativeBridgeName).dll</PrebuiltBridgePath>
+    <UsePrebuiltBridge Condition="Exists('$(PrebuiltBridgePath)')">true</UsePrebuiltBridge>
+    <UsePrebuiltBridge Condition="'$(UsePrebuiltBridge)' == ''">false</UsePrebuiltBridge>
+    <NativeBridgeSource Condition="'$(UsePrebuiltBridge)' == 'true'">$(PrebuiltBridgePath)</NativeBridgeSource>
+    <NativeBridgeSource Condition="'$(NativeBridgeSource)' == ''">$(NativeBridgeOutputPath)</NativeBridgeSource>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="WPF-UI" Version="4.2.0" />
     <PackageReference Include="WPF-UI.Tray" Version="4.2.0" />
@@ -43,12 +52,12 @@
   </ItemGroup>
 
   <Target Name="BuildNativeBridge" BeforeTargets="BeforeBuild">
-    <Exec Command="cargo $(CargoArguments)" />
-    <Copy SourceFiles="$(NativeBridgeOutputPath)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+    <Exec Condition="'$(UsePrebuiltBridge)' != 'true'" Command="cargo $(CargoArguments)" />
+    <Copy SourceFiles="$(NativeBridgeSource)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
   </Target>
 
   <Target Name="CopyNativeBridgeToPublish" AfterTargets="Publish">
-    <Copy SourceFiles="$(NativeBridgeOutputPath)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(NativeBridgeSource)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
   </Target>
 
 </Project>

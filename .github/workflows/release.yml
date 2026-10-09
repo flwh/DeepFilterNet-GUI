@@ -13,10 +13,9 @@ jobs:
   build-release:
     runs-on: windows-latest
     steps:
+      # 桥接 DLL 已预编译在 prebuilt\ 下，无需拉取子模块与 Rust 工具链
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Read App Info
         shell: pwsh
@@ -45,11 +44,6 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.x"
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-pc-windows-msvc
 
       - name: Restore
         run: dotnet restore
