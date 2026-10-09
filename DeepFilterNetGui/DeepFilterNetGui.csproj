@@ -42,9 +42,7 @@
   <ItemGroup>
     <PackageReference Include="WPF-UI" Version="4.2.0" />
     <PackageReference Include="WPF-UI.Tray" Version="4.2.0" />
-    <!-- 只用 WASAPI(WasapiCapture/WasapiOut/MMDevice) 与 WinMM(WaveInEvent/WaveOutEvent)，不引 NAudio 元包以免带入 ASIO/Midi/WinForms 组件 -->
-    <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
-    <PackageReference Include="NAudio.WinMM" Version="2.2.1" />
+    <PackageReference Include="NAudio" Version="2.2.1" />
     <PackageReference Include="PortAudioSharp2" Version="1.0.6" />
   </ItemGroup>
 

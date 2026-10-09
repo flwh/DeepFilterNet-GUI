@@ -48,9 +48,10 @@ dotnet run --project DeepFilterNetGui/DeepFilterNetGui.csproj
 | --- | --- |
 | `WPF-UI` | 4.2.0 |
 | `WPF-UI.Tray` | 4.2.0 |
-| `NAudio.Wasapi` | 2.2.1 |
-| `NAudio.WinMM` | 2.2.1 |
+| `NAudio` | 2.2.1 |
 | `PortAudioSharp2` | 1.0.6 |
+
+> `NAudio` 用元包而非 `NAudio.Wasapi` + `NAudio.WinMM`：MME 设备枚举依赖的 `WaveIn`/`WaveOut` 在拆分包的 netstandard 资产里不可见。元包会带上 `NAudio.Asio.dll` 等组件，但代码中已无 ASIO 路径，不会被加载。
 
 **推理参数说明**
 
