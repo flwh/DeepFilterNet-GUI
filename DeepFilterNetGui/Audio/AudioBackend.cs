@@ -4,8 +4,7 @@ public enum AudioBackendType
 {
     Wdm,
     Mme,
-    Ks,
-    Asio
+    Ks
 }
 
 public sealed class AudioBackendItem

@@ -12,13 +12,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
 {
     private const int WaveformWidth = 1000;
     private const int WaveformHeight = 1000;
-    private const int SpectrumWidth = 1000;
-    private const int SpectrumHeight = 1000;
 
     private readonly WriteableBitmap _waveformBitmap;
     private readonly int[] _waveformPixels;
-    private readonly WriteableBitmap _spectrumBitmap;
-    private readonly int[] _spectrumPixels;
 
     private bool _isRunning;
     private string _statusText = "已停止";
@@ -63,8 +59,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         _waveformBitmap = new WriteableBitmap(WaveformWidth, WaveformHeight, 96, 96, PixelFormats.Bgra32, null);
         _waveformPixels = new int[WaveformWidth * WaveformHeight];
-        _spectrumBitmap = new WriteableBitmap(SpectrumWidth, SpectrumHeight, 96, 96, PixelFormats.Bgra32, null);
-        _spectrumPixels = new int[SpectrumWidth * SpectrumHeight];
     }
 
     public ObservableCollection<AudioBackendItem> Backends { get; }
@@ -139,7 +133,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
         => string.IsNullOrWhiteSpace(_appVersion) ? "DeepFilterNet3 实时降噪" : $"DeepFilterNet3 实时降噪 v{_appVersion}";
 
     public ImageSource WaveformImage => _waveformBitmap;
-    public ImageSource SpectrumImage => _spectrumBitmap;
 
     public double FrameMs { get => _frameMs; set => SetField(ref _frameMs, value); }
     public double InferMs { get => _inferMs; set => SetField(ref _inferMs, value); }
@@ -247,32 +240,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         _waveformBitmap.WritePixels(new System.Windows.Int32Rect(0, 0, WaveformWidth, WaveformHeight),
             _waveformPixels, WaveformWidth * 4, 0);
-    }
-
-    public void UpdateSpectrum(float[] magnitudes)
-    {
-        Array.Fill(_spectrumPixels, unchecked((int)0xFF111111));
-        int bins = magnitudes.Length;
-        for (int x = 0; x < SpectrumWidth; x++)
-        {
-            int idx = x * bins / SpectrumWidth;
-            float mag = magnitudes[idx];
-            double db = 20 * Math.Log10(mag + 1e-6);
-            double norm = (db + 80) / 80;
-            norm = Math.Clamp(norm, 0, 1);
-            int bar = (int)(norm * (SpectrumHeight - 1));
-            for (int y = SpectrumHeight - 1; y >= SpectrumHeight - 1 - bar; y--)
-            {
-                int r = (int)(norm * 255);
-                int g = (int)(Math.Min(1, norm * 1.2) * 255);
-                int b = 64;
-                int color = (255 << 24) | (r << 16) | (g << 8) | b;
-                _spectrumPixels[y * SpectrumWidth + x] = color;
-            }
-        }
-
-        _spectrumBitmap.WritePixels(new System.Windows.Int32Rect(0, 0, SpectrumWidth, SpectrumHeight),
-            _spectrumPixels, SpectrumWidth * 4, 0);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;

@@ -10,18 +10,14 @@ internal sealed class DenoiseSampleProvider : ISampleProvider
     private const double SilentResetThresholdSeconds = 0.5;
     private readonly ISampleProvider _source;
     private readonly DeepFilterRuntime _runtime;
-    private readonly StftProcessor _stft;
     private readonly Func<double> _latencyProvider;
     private readonly Action<float[]>? _waveform;
-    private readonly Action<float[]>? _spectrum;
     private readonly Action<Metrics>? _metrics;
     private readonly int _sourceChannels;
     private readonly int _outputChannels;
     private readonly int _sampleRate;
     private readonly int _analysisHopSize;
-    private readonly int _fftBins;
     private readonly float[] _analysisHop;
-    private readonly float[] _analysisSpec;
     private readonly Stopwatch _uiStopwatch = Stopwatch.StartNew();
     private float[] _sourceBuffer = Array.Empty<float>();
     private float[] _processedBuffer = Array.Empty<float>();
@@ -42,7 +38,6 @@ internal sealed class DenoiseSampleProvider : ISampleProvider
         int outputChannels,
         Func<double> latencyProvider,
         Action<float[]>? waveform,
-        Action<float[]>? spectrum,
         Action<Metrics>? metrics)
     {
         _source = source;
@@ -52,13 +47,9 @@ internal sealed class DenoiseSampleProvider : ISampleProvider
         _sampleRate = sampleRate;
         _latencyProvider = latencyProvider;
         _waveform = waveform;
-        _spectrum = spectrum;
         _metrics = metrics;
         _analysisHopSize = Math.Max(1, _runtime.FrameSize);
-        _stft = new StftProcessor(ChooseFftSize(_analysisHopSize), _analysisHopSize);
-        _fftBins = _stft.FftSize / 2 + 1;
         _analysisHop = new float[_analysisHopSize];
-        _analysisSpec = new float[_fftBins * 2];
         WaveFormat = WaveFormat.CreateIeeeFloatWaveFormat(sampleRate, _outputChannels);
     }
 
@@ -213,7 +204,6 @@ internal sealed class DenoiseSampleProvider : ISampleProvider
 
             if (_analysisFill == _analysisHopSize)
             {
-                _stft.AnalyzeTo(_analysisHop, _analysisSpec);
                 _analysisFill = 0;
             }
         }
@@ -275,7 +265,6 @@ internal sealed class DenoiseSampleProvider : ISampleProvider
         {
             _lastUiTick = now;
             _waveform?.Invoke((float[])_analysisHop.Clone());
-            _spectrum?.Invoke(ComputeSpectrum());
             _metrics?.Invoke(metrics);
         }
     }
@@ -297,29 +286,5 @@ internal sealed class DenoiseSampleProvider : ISampleProvider
         }
 
         return (float)Math.Sqrt(sum / length);
-    }
-
-    private float[] ComputeSpectrum()
-    {
-        var magnitudes = new float[_fftBins];
-        for (int i = 0; i < _fftBins; i++)
-        {
-            float re = _analysisSpec[i * 2];
-            float im = _analysisSpec[i * 2 + 1];
-            magnitudes[i] = (float)Math.Sqrt((re * re) + (im * im));
-        }
-
-        return magnitudes;
-    }
-
-    private static int ChooseFftSize(int hopSize)
-    {
-        int size = 1;
-        while (size < hopSize * 2)
-        {
-            size <<= 1;
-        }
-
-        return size;
     }
 }

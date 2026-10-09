@@ -13,15 +13,15 @@
 - 内嵌默认模型：启动无需额外放置模型包。
 - 多通道处理：输入支持双声道时默认按双声道处理，不再先混成单声道。
 - 内部重采样：GUI 仅在输入侧对齐到输出采样率，runtime 内部自动完成与 48 kHz 模型采样率之间的转换。
-- 后端与设备可选：WDM / MME / KS / ASIO。
-- 监控与可视化：波形、频谱、RTF、帧耗时、推理耗时、处理通道模式。
+- 后端与设备可选：WDM / MME / KS。
+- 监控与可视化：波形、RTF、帧耗时、推理耗时、处理通道模式。
 - 托盘常驻、开机启动、文件日志。
 
 **环境要求**
 - Windows 10/11 x64
 - .NET 10 SDK
 - Rust 工具链（`x86_64-pc-windows-msvc`）
-- 可用音频驱动（WDM/MME/KS/ASIO）
+- 可用音频驱动（WDM/MME/KS）
 - Git 子模块已初始化
 
 **构建与运行**
@@ -67,7 +67,6 @@ dotnet run --project DeepFilterNetGui/DeepFilterNetGui.csproj
 | WDM | WASAPI 共享模式，兼容性较好。 |
 | MME | 传统接口，延迟较高。 |
 | KS | 通过 PortAudio WDM-KS，依赖驱动支持。 |
-| ASIO | 输入/输出必须选择同一驱动。 |
 
 **配置文件**
 
@@ -99,17 +98,15 @@ dotnet run --project DeepFilterNetGui/DeepFilterNetGui.csproj
    先执行 `git submodule update --init --recursive`。
 2. 构建时提示找不到 `cargo`
    安装 Rust MSVC 工具链，并确认 `cargo` 在 `PATH` 中。
-3. ASIO 启动失败
-   ASIO 输入输出必须选择同一驱动，并且输入/输出后端都为 ASIO。
-4. KS 启动失败
+3. KS 启动失败
    驱动可能不支持当前格式或独占模式，建议切换 WDM/MME 进行验证。
-5. 没有声音或输出很小
+4. 没有声音或输出很小
    检查设备音量、输入输出设备选择和驱动采样率支持情况。
 
 **已知限制**
 
 - 仅支持 CPU 推理。
-- 当前 GUI 仅暴露单幅波形/频谱监视图；双声道模式下监视数据为双声道平均结果。
+- 当前 GUI 仅暴露单幅波形监视图；双声道模式下监视数据为双声道平均结果。
 - 运行中不支持切换模型，仅使用内嵌默认模型。
 
 **许可**

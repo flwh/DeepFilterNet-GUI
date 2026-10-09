@@ -51,7 +51,6 @@ public partial class MainWindow : FluentWindow
         _viewModel.Backends.Add(new AudioBackendItem(AudioBackendType.Wdm, "WDM"));
         _viewModel.Backends.Add(new AudioBackendItem(AudioBackendType.Mme, "MME"));
         _viewModel.Backends.Add(new AudioBackendItem(AudioBackendType.Ks, "KS"));
-        _viewModel.Backends.Add(new AudioBackendItem(AudioBackendType.Asio, "ASIO"));
         var first = _viewModel.Backends.FirstOrDefault();
         _viewModel.SelectedInputBackend = first;
         _viewModel.SelectedOutputBackend = first;
@@ -85,12 +84,10 @@ public partial class MainWindow : FluentWindow
     {
         if (e.PropertyName == nameof(MainViewModel.SelectedInputBackend))
         {
-            EnforceAsioCoupling(true);
             ReloadInputDevices(_viewModel.SelectedInputBackend);
         }
         else if (e.PropertyName == nameof(MainViewModel.SelectedOutputBackend))
         {
-            EnforceAsioCoupling(false);
             ReloadOutputDevices(_viewModel.SelectedOutputBackend);
         }
         else if (e.PropertyName == nameof(MainViewModel.DenoiseStrengthDb))
@@ -101,36 +98,6 @@ public partial class MainWindow : FluentWindow
         {
             _engine.SetPostFilterBeta((float)_viewModel.PostFilterBeta);
         }
-        else if (e.PropertyName == nameof(MainViewModel.SelectedOutputDevice))
-        {
-            if (IsAsioSelected() &&
-                _viewModel.SelectedOutputDevice != null &&
-                _viewModel.SelectedInputDevice != _viewModel.SelectedOutputDevice)
-            {
-                _viewModel.SelectedInputDevice = _viewModel.SelectedOutputDevice;
-            }
-        }
-    }
-
-    private void EnforceAsioCoupling(bool inputChanged)
-    {
-        if (!IsAsioSelected())
-            return;
-
-        var asioItem = _viewModel.Backends.FirstOrDefault(b => b.Backend == AudioBackendType.Asio);
-        if (asioItem == null)
-            return;
-
-        if (inputChanged && _viewModel.SelectedOutputBackend?.Backend != AudioBackendType.Asio)
-            _viewModel.SelectedOutputBackend = asioItem;
-        if (!inputChanged && _viewModel.SelectedInputBackend?.Backend != AudioBackendType.Asio)
-            _viewModel.SelectedInputBackend = asioItem;
-    }
-
-    private bool IsAsioSelected()
-    {
-        return _viewModel.SelectedInputBackend?.Backend == AudioBackendType.Asio ||
-               _viewModel.SelectedOutputBackend?.Backend == AudioBackendType.Asio;
     }
 
     private void HookEngineEvents()
@@ -144,17 +111,6 @@ public partial class MainWindow : FluentWindow
                 if (_uiPaused)
                     return;
                 _viewModel.UpdateWaveform(samples);
-            });
-        };
-        _engine.SpectrumAvailable += magnitudes =>
-        {
-            if (_uiPaused)
-                return;
-            Dispatcher.InvokeAsync(() =>
-            {
-                if (_uiPaused)
-                    return;
-                _viewModel.UpdateSpectrum(magnitudes);
             });
         };
         _engine.MetricsAvailable += metrics =>
@@ -235,23 +191,6 @@ public partial class MainWindow : FluentWindow
             var outputDevice = _viewModel.SelectedOutputDevice;
             var inputBackend = _viewModel.SelectedInputBackend?.Backend ?? AudioBackendType.Wdm;
             var outputBackend = _viewModel.SelectedOutputBackend?.Backend ?? AudioBackendType.Wdm;
-
-            if (inputBackend == AudioBackendType.Asio || outputBackend == AudioBackendType.Asio)
-            {
-                if (inputBackend != AudioBackendType.Asio || outputBackend != AudioBackendType.Asio)
-                {
-                    AppLogger.Warning("ASIO 后端需要输入/输出同时选择 ASIO，已自动对齐。");
-                    ShowUserPrompt("提示", "ASIO 后端需要输入/输出同时选择 ASIO，已自动对齐。", ControlAppearance.Info);
-                }
-                inputBackend = AudioBackendType.Asio;
-                outputBackend = AudioBackendType.Asio;
-                if (!string.Equals(inputDevice.Id, outputDevice.Id, StringComparison.OrdinalIgnoreCase))
-                {
-                    AppLogger.Warning("ASIO输入输出必须为同一驱动，将使用输出设备。");
-                    ShowUserPrompt("提示", "ASIO 输入输出必须为同一驱动，将使用输出设备。", ControlAppearance.Info);
-                    inputDevice = outputDevice;
-                }
-            }
 
             _engine.Start(inputBackend, outputBackend, inputDevice, outputDevice, _settings);
             UpdateRuntimeAudioInfo();

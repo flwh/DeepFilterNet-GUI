@@ -14,7 +14,6 @@ public sealed class AudioEngine : IDisposable
 {
     private IWaveIn? _capture;
     private IWavePlayer? _output;
-    private AsioOut? _asioOut;
     private BufferedWaveProvider? _inputBuffer;
     private ISampleProvider? _inputSampleProvider;
     private ISampleProvider? _outputSampleProvider;
@@ -27,12 +26,8 @@ public sealed class AudioEngine : IDisposable
     private WaveFormat? _outputFormat;
     private int _pipelineSampleRate;
     private int _processingChannels;
-    private int _asioSampleRate;
-    private int _asioInputChannels = 1;
-    private int _asioOutputChannels = 2;
     private byte[]? _captureByteBuffer;
     private float[]? _captureFloatBuffer;
-    private float[]? _asioInterleavedBuffer;
     private TimingAccumulator? _inputResampleTiming;
     private TimingAccumulator? _outputChainTiming;
     private Stream? _paStream;
@@ -51,7 +46,6 @@ public sealed class AudioEngine : IDisposable
     private AudioEngineConfig? _config;
 
     public event Action<float[]>? WaveformAvailable;
-    public event Action<float[]>? SpectrumAvailable;
     public event Action<Metrics>? MetricsAvailable;
 
     public bool IsRunning { get; private set; }
@@ -90,8 +84,6 @@ public sealed class AudioEngine : IDisposable
                         return new AudioDeviceItem(i.ToString(), caps.ProductName);
                     })
                     .ToList();
-            case AudioBackendType.Asio:
-                return GetAsioDrivers();
             case AudioBackendType.Ks:
                 return PortAudioManager.GetKsInputDevices();
             case AudioBackendType.Wdm:
@@ -117,8 +109,6 @@ public sealed class AudioEngine : IDisposable
                         return new AudioDeviceItem(i.ToString(), caps.ProductName);
                     })
                     .ToList();
-            case AudioBackendType.Asio:
-                return GetAsioDrivers();
             case AudioBackendType.Ks:
                 return PortAudioManager.GetKsOutputDevices();
             case AudioBackendType.Wdm:
@@ -129,20 +119,6 @@ public sealed class AudioEngine : IDisposable
                         .Select(d => new AudioDeviceItem(d.ID, d.FriendlyName))
                         .ToList();
                 }
-        }
-    }
-
-    private static IReadOnlyList<AudioDeviceItem> GetAsioDrivers()
-    {
-        try
-        {
-            var drivers = AsioOut.GetDriverNames();
-            return drivers.Select(name => new AudioDeviceItem(name, name)).ToList();
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Warning($"枚举ASIO驱动失败: {ex.Message}");
-            return Array.Empty<AudioDeviceItem>();
         }
     }
 
@@ -165,26 +141,19 @@ public sealed class AudioEngine : IDisposable
         bool useKsInput = inputBackend == AudioBackendType.Ks;
         bool useKsOutput = outputBackend == AudioBackendType.Ks;
 
-        if (inputBackend == AudioBackendType.Asio || outputBackend == AudioBackendType.Asio)
+        if (useKsInput || useKsOutput)
         {
-            SetupAsio(inputDevice, outputDevice);
+            SetupPortAudioStream(useKsInput, useKsOutput, inputDevice, outputDevice);
         }
-        else
+
+        if (!useKsInput)
         {
-            if (useKsInput || useKsOutput)
-            {
-                SetupPortAudioStream(useKsInput, useKsOutput, inputDevice, outputDevice);
-            }
+            SetupCapture(inputBackend, inputDevice);
+        }
 
-            if (!useKsInput)
-            {
-                SetupCapture(inputBackend, inputDevice);
-            }
-
-            if (!useKsOutput)
-            {
-                SetupOutput(outputBackend, outputDevice);
-            }
+        if (!useKsOutput)
+        {
+            SetupOutput(outputBackend, outputDevice);
         }
 
         if (_inputFormat == null || _outputFormat == null)
@@ -209,17 +178,12 @@ public sealed class AudioEngine : IDisposable
             Math.Max(1, _outputFormat.Channels),
             GetEstimatedLatencyMs,
             WaveformAvailable,
-            SpectrumAvailable,
             MetricsAvailable
         );
 
         _outputChainTiming = new TimingAccumulator();
         _outputSampleProvider = new TimingSampleProvider(_denoiseProvider, _outputChainTiming);
-        if (_asioOut != null)
-        {
-            _asioOut.InitRecordAndPlayback(_outputSampleProvider.ToWaveProvider(), _asioInputChannels, _asioSampleRate);
-        }
-        else if (_output != null)
+        if (_output != null)
         {
             _output.Init(_outputSampleProvider.ToWaveProvider());
         }
@@ -280,22 +244,14 @@ public sealed class AudioEngine : IDisposable
         {
             _capture.DataAvailable -= OnCaptureDataAvailable;
         }
-        if (_asioOut != null)
-        {
-            _asioOut.AudioAvailable -= OnAsioAudioAvailable;
-        }
-
-        var outputToDispose = ReferenceEquals(_output, _asioOut) ? null : _output;
 
         DisposeSilently(_capture, "释放录音资源失败");
-        DisposeSilently(outputToDispose, "释放播放资源失败");
+        DisposeSilently(_output, "释放播放资源失败");
         DisposeSilently(_paStream, "释放 KS 流失败");
-        DisposeSilently(_asioOut, "释放 ASIO 资源失败");
         DisposeSilently(_runtime, "释放推理资源失败");
 
         _capture = null;
         _output = null;
-        _asioOut = null;
         _runtime = null;
         _inputBuffer = null;
         _inputSampleProvider = null;
@@ -305,8 +261,6 @@ public sealed class AudioEngine : IDisposable
         _outputChainTiming = null;
         _captureByteBuffer = null;
         _captureFloatBuffer = null;
-        _asioInterleavedBuffer = null;
-        _asioSampleRate = 0;
         _paStream = null;
         _paCallback = null;
         _paUseInput = false;
@@ -410,33 +364,6 @@ public sealed class AudioEngine : IDisposable
                 }
                 break;
         }
-    }
-
-    private void SetupAsio(AudioDeviceItem inputDevice, AudioDeviceItem outputDevice)
-    {
-        string driverName = outputDevice.Id;
-        if (!string.Equals(inputDevice.Id, outputDevice.Id, StringComparison.OrdinalIgnoreCase))
-        {
-            AppLogger.Warning("ASIO输入输出必须为同一驱动，已使用输出设备作为驱动。");
-        }
-
-        _asioOut = new AsioOut(driverName);
-        _output = _asioOut;
-
-        _asioInputChannels = NormalizeCaptureChannels(GetAsioDefaultInputChannels(_asioOut));
-        _asioOutputChannels = GetAsioDefaultOutputChannels(_asioOut);
-
-        _asioSampleRate = ChooseAsioSampleRate(_asioOut, _config?.SampleRate ?? 48000);
-        if (_asioSampleRate <= 0)
-            throw new InvalidOperationException("ASIO 不支持所选采样率，请调整采样率或切换后端。");
-        _inputFormat = WaveFormat.CreateIeeeFloatWaveFormat(_asioSampleRate, _asioInputChannels);
-        _outputFormat = WaveFormat.CreateIeeeFloatWaveFormat(_asioSampleRate, _asioOutputChannels);
-        ActualInputSampleRate = _inputFormat.SampleRate;
-        ActualOutputSampleRate = _outputFormat.SampleRate;
-
-        CreateInputBuffer();
-
-        _asioOut.AudioAvailable += OnAsioAudioAvailable;
     }
 
     private void SetupPortAudioStream(bool useInput, bool useOutput, AudioDeviceItem inputDevice, AudioDeviceItem outputDevice)
@@ -586,19 +513,6 @@ public sealed class AudioEngine : IDisposable
         _inputBuffer?.AddSamples(e.Buffer, 0, e.BytesRecorded);
     }
 
-    private void OnAsioAudioAvailable(object? sender, AsioAudioAvailableEventArgs e)
-    {
-        int channels = Math.Max(1, e.InputBuffers.Length);
-        int frames = e.SamplesPerBuffer;
-        int required = frames * channels;
-
-        if (_asioInterleavedBuffer == null || _asioInterleavedBuffer.Length < required)
-            _asioInterleavedBuffer = new float[required];
-
-        e.GetAsInterleavedSamples(_asioInterleavedBuffer);
-        AddCapturedFloatSamples(_asioInterleavedBuffer, frames, channels);
-    }
-
     private StreamCallbackResult OnPortAudioCallback(
         IntPtr input,
         IntPtr output,
@@ -692,10 +606,6 @@ public sealed class AudioEngine : IDisposable
         {
             AppLogger.Info($"KS(PortAudio): SR={_paSampleRate}Hz InCh={_paInputChannels} OutCh={_paOutputChannels} Format={_paSampleFormat}");
         }
-        if ((inputBackend == AudioBackendType.Asio || outputBackend == AudioBackendType.Asio) && _asioSampleRate > 0)
-        {
-            AppLogger.Info($"ASIO采样率: {_asioSampleRate} Hz 输入通道={_asioInputChannels} 输出通道={_asioOutputChannels}");
-        }
     }
 
     private double GetEstimatedLatencyMs()
@@ -744,25 +654,6 @@ public sealed class AudioEngine : IDisposable
         if (maxChannels > 2)
             channels.Add(maxChannels);
         return channels.Distinct().ToList();
-    }
-
-    private static int ChooseAsioSampleRate(AsioOut asioOut, int preferredRate)
-    {
-        if (preferredRate <= 0)
-            return 0;
-
-        try
-        {
-            if (asioOut.IsSampleRateSupported(preferredRate))
-                return preferredRate;
-        }
-        catch
-        {
-            // ignore
-        }
-
-        AppLogger.Warning($"ASIO 不支持采样率 {preferredRate} Hz。");
-        return 0;
     }
 
     private void AddCapturedFloatSamples(float[] interleavedSamples, int frames, int sourceChannels)
@@ -855,38 +746,6 @@ public sealed class AudioEngine : IDisposable
             AppLogger.Warning($"读取 WDM 默认延迟失败: {ex.Message}");
             return 0;
         }
-    }
-
-    private static int GetAsioDefaultInputChannels(AsioOut asioOut)
-    {
-        try
-        {
-            int count = asioOut.DriverInputChannelCount;
-            if (count > 0)
-                return count;
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Warning($"读取 ASIO 输入通道数失败: {ex.Message}");
-        }
-        AppLogger.Warning("无法获取 ASIO 输入通道数，将使用 1 通道作为回退。");
-        return 1;
-    }
-
-    private static int GetAsioDefaultOutputChannels(AsioOut asioOut)
-    {
-        try
-        {
-            int count = asioOut.DriverOutputChannelCount;
-            if (count > 0)
-                return count;
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Warning($"读取 ASIO 输出通道数失败: {ex.Message}");
-        }
-        AppLogger.Warning("无法获取 ASIO 输出通道数，将使用 2 通道作为回退。");
-        return 2;
     }
 
     private static int NormalizeCaptureChannels(int channels)
