@@ -35,7 +35,10 @@ dotnet run --project DeepFilterNetGui/DeepFilterNetGui.csproj
 
 **重新编译桥接（仅改动 Rust 时才需要）**
 
-1. 安装 Rust 工具链（`x86_64-pc-windows-msvc`）并执行 `git submodule update --init --recursive`。
+日常构建不再需要 Rust 源码，DeepFilterNet 子模块也已从仓库移除。要重新编译时：
+
+1. 安装 Rust 工具链（`x86_64-pc-windows-msvc`），并手动取回源码：
+   `git submodule add https://github.com/Rikorose/DeepFilterNet.git extern/DeepFilterNet`
 2. 删除或改名 `prebuilt\` 目录，构建会自动回退到 `cargo build`，产物取自 `rust\deepfilter_runtime_bridge\target\...`。
 3. 编译完成后把新的 `deepfilter_runtime_bridge.dll` 放回 `prebuilt\`，恢复快速构建。
 
@@ -45,7 +48,8 @@ dotnet run --project DeepFilterNetGui/DeepFilterNetGui.csproj
 | --- | --- |
 | `WPF-UI` | 4.2.0 |
 | `WPF-UI.Tray` | 4.2.0 |
-| `NAudio` | 2.2.1 |
+| `NAudio.Wasapi` | 2.2.1 |
+| `NAudio.WinMM` | 2.2.1 |
 | `PortAudioSharp2` | 1.0.6 |
 
 **推理参数说明**
@@ -99,13 +103,11 @@ dotnet run --project DeepFilterNetGui/DeepFilterNetGui.csproj
 
 **常见问题**
 
-1. 构建时提示找不到 DeepFilterNet 源码
-   先执行 `git submodule update --init --recursive`。
-2. 构建时提示找不到 `cargo`
-   安装 Rust MSVC 工具链，并确认 `cargo` 在 `PATH` 中。
-3. KS 启动失败
+1. 构建时报找不到 `cargo` 或 DeepFilterNet 源码
+   日常构建不需要 Rust。只有在 `prebuilt\deepfilter_runtime_bridge.dll` 缺失时才会回退到 `cargo build`，按上文"重新编译桥接"操作或恢复该文件即可。
+2. KS 启动失败
    驱动可能不支持当前格式或独占模式，建议切换 WDM/MME 进行验证。
-4. 没有声音或输出很小
+3. 没有声音或输出很小
    检查设备音量、输入输出设备选择和驱动采样率支持情况。
 
 **已知限制**
